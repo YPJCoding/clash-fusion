@@ -146,3 +146,7 @@ pnpm deploy
 ## License
 
 AGPL-3.0
+
+## Credits
+
+The default DNS configuration and routing rules in `src/config.ts` are adapted from [bling-yshs's Mihomo configuration guide](https://linux.do/t/topic/1999640) on Linux.do.
