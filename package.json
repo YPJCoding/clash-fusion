@@ -1,0 +1,18 @@
+{
+  "name": "clash-fusion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250624.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}
