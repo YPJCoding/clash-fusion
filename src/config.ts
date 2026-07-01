@@ -9,7 +9,7 @@ export const TEMPLATE: Record<string, unknown> = {
       "*.linux.do": "https://xxx.ddd.oaifree.com/query-dns",
       "linux.do": "https://xxx.ddd.oaifree.com/query-dns",
     },
-    nameserver: ["https://1.1.1.1/dns-query#🚀 节点选择", "https://8.8.8.8/dns-query#🚀 节点选择"],
+    nameserver: ["https://1.1.1.1/dns-query#RULES", "https://8.8.8.8/dns-query#RULES"],
     "proxy-server-nameserver": ["119.29.29.29", "223.5.5.5"],
     "direct-nameserver": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
     "direct-nameserver-follow-policy": true,
