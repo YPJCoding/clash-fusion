@@ -29,22 +29,44 @@ export default {
         return new Response("SUBSCRIPTION_URLS secret is not configured", { status: 500 });
       }
 
+      let excludePattern: RegExp | null = null;
+      if (env.EXCLUDE_PATTERN) {
+        try {
+          excludePattern = new RegExp(env.EXCLUDE_PATTERN);
+        } catch (e) {
+          return new Response(`Invalid EXCLUDE_PATTERN: ${e instanceof Error ? e.message : String(e)}`, { status: 400 });
+        }
+      }
+
       try {
         const results = await Promise.allSettled(
           subscriptionUrls.map((subUrl) => fetchSubscription(subUrl)),
         );
 
         const allProxies: ClashProxy[] = [];
+        let failedCount = 0;
         for (const result of results) {
-          if (result.status === "fulfilled") allProxies.push(...result.value);
+          if (result.status === "fulfilled") {
+            allProxies.push(...result.value);
+          } else {
+            failedCount += 1;
+            console.warn(`Subscription fetch failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+          }
         }
 
         let processed = allProxies;
-        if (env.EXCLUDE_PATTERN) {
-          processed = excludeByName(processed, new RegExp(env.EXCLUDE_PATTERN));
+        if (excludePattern) {
+          processed = excludeByName(processed, excludePattern);
         }
         processed = dedupeByEndpoint(processed);
         processed = sortByName(processed);
+
+        if (processed.length === 0) {
+          return new Response(
+            `No proxies available after parsing/filtering. subscriptions=${subscriptionUrls.length}, failed=${failedCount}, parsed=${allProxies.length}`,
+            { status: 502 },
+          );
+        }
 
         const nodeNames = processed.map((p) => p.name);
         const proxyGroups = expandProxyGroups(nodeNames);
