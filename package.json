@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "yaml": "^2.7.0"
