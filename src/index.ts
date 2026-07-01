@@ -11,7 +11,7 @@ export interface Env {
 }
 
 const YAML_STRINGIFY_OPTIONS = {
-  defaultStringType: "QUOTE_DOUBLE" as const,
+  lineWidth: 0,
 };
 
 export default {
