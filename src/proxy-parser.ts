@@ -8,25 +8,34 @@ export interface ClashProxy {
   [key: string]: unknown;
 }
 
+interface ParsedUrl {
+  protocol: string;
+  username: string;
+  password: string;
+  userinfo: string;
+  host: string;
+  port: number;
+  params: URLSearchParams;
+  hash: string;
+}
+
 export function parseSubscriptionContent(raw: string): ClashProxy[] {
   const text = raw.trim();
   if (!text) return [];
 
   // Try base64 decode (common for subscription content in URI format)
   let decoded = text;
-  try {
-    const buf = atob(text);
-    if (buf.length > 0 && /^(ss|vmess|vless|trojan|hysteria2?|hy2|tuic|anytls|wireguard|socks5|http)/m.test(buf)) {
-      decoded = buf;
-    }
-  } catch { /* not base64 */ }
+  const base64Decoded = decodeBase64Flexible(text);
+  if (base64Decoded && /^(ss|vmess|vless|trojan|hysteria2?|hy2|tuic|anytls|wireguard|socks5|http)/im.test(base64Decoded.trim())) {
+    decoded = base64Decoded;
+  }
 
   // Clash YAML format (starts with mixed-port or has proxies: section)
   if (/^\s*(mixed-port:|allow-lan:|mode:|proxies:)/m.test(decoded)) {
     try {
       const parsed = parseYaml(decoded) as { proxies?: ClashProxy[] };
       if (Array.isArray(parsed?.proxies)) {
-        return parsed.proxies.filter((p: unknown) => p && typeof p === "object" && "name" in (p as object));
+        return parsed.proxies.filter(isProxyLike);
       }
     } catch { /* not YAML */ }
   }
@@ -36,7 +45,7 @@ export function parseSubscriptionContent(raw: string): ClashProxy[] {
     try {
       const parsed = JSON.parse(decoded);
       const proxies = Array.isArray(parsed) ? parsed : parsed.proxies || [];
-      return proxies.filter((p: unknown) => p && typeof p === "object" && "name" in (p as object));
+      return proxies.filter(isProxyLike);
     } catch { /* not JSON */ }
   }
 
@@ -49,73 +58,118 @@ export function parseSubscriptionContent(raw: string): ClashProxy[] {
     .filter((p): p is ClashProxy => p !== null);
 }
 
+function isProxyLike(p: unknown): p is ClashProxy {
+  return !!p && typeof p === "object" && "name" in p && "type" in p && "server" in p && "port" in p;
+}
+
 function parseProxyLine(line: string): ClashProxy | null {
   try {
-    const decoded = decodeURIComponent(line);
-    if (decoded.startsWith("ss://")) return parseSs(decoded);
-    if (decoded.startsWith("vmess://")) return parseVmess(decoded);
-    if (decoded.startsWith("vless://")) return parseVless(decoded);
-    if (decoded.startsWith("trojan://")) return parseTrojan(decoded);
-    if (/^hysteria2?:\/\//i.test(decoded)) return parseHysteria2(decoded);
-    if (/^hy2:\/\//i.test(decoded)) return parseHysteria2(decoded);
-    if (decoded.startsWith("tuic://")) return parseTuic(decoded);
-    if (decoded.startsWith("anytls://")) return parseAnyTls(decoded);
-    if (decoded.startsWith("http://") || decoded.startsWith("https://")) return parseHttp(decoded);
-    if (decoded.startsWith("socks5://")) return parseSocks5(decoded);
+    const lower = line.toLowerCase();
+    if (lower.startsWith("ss://")) return parseSs(line);
+    if (lower.startsWith("vmess://")) return parseVmess(line);
+    if (lower.startsWith("vless://")) return parseVless(line);
+    if (lower.startsWith("trojan://")) return parseTrojan(line);
+    if (/^hysteria2?:\/\//i.test(line)) return parseHysteria2(line);
+    if (/^hy2:\/\//i.test(line)) return parseHysteria2(line);
+    if (lower.startsWith("tuic://")) return parseTuic(line);
+    if (lower.startsWith("anytls://")) return parseAnyTls(line);
+    if (lower.startsWith("http://") || lower.startsWith("https://")) return parseHttp(line);
+    if (lower.startsWith("socks5://")) return parseSocks5(line);
     return null;
   } catch {
     return null;
   }
 }
 
-function parseUrl(url: string): { protocol: string; userinfo: string; host: string; port: number; params: URLSearchParams; hash: string } {
+function parseUrl(url: string): ParsedUrl {
   const u = new URL(url);
+  const protocol = u.protocol.replace(":", "").toLowerCase();
+  const username = safeDecodeURIComponent(u.username || "");
+  const password = safeDecodeURIComponent(u.password || "");
   return {
-    protocol: u.protocol.replace(":", ""),
-    userinfo: decodeURIComponent(u.username || ""),
+    protocol,
+    username,
+    password,
+    userinfo: password ? `${username}:${password}` : username,
     host: u.hostname,
-    port: Number(u.port) || 443,
+    port: Number(u.port) || defaultPort(protocol),
     params: u.searchParams,
-    hash: decodeURIComponent(u.hash.replace(/^#/, "")),
+    hash: safeDecodeURIComponent(u.hash.replace(/^#/, "")),
   };
 }
 
-function parseSs(url: string): ClashProxy {
+function defaultPort(protocol: string): number {
+  if (protocol === "http") return 80;
+  if (protocol === "socks5") return 1080;
+  return 443;
+}
+
+function parseSs(url: string): ClashProxy | null {
+  // Supported formats:
   // ss://base64(method:password)@host:port#name
   // ss://base64(method:password@host:port)#name
+  // ss://method:password@host:port#name
   const rest = url.slice(5);
-  const hashIdx = rest.lastIndexOf("#");
-  const encoded = hashIdx >= 0 ? rest.slice(0, hashIdx) : rest;
+  const hashIdx = rest.indexOf("#");
+  const withoutHash = hashIdx >= 0 ? rest.slice(0, hashIdx) : rest;
   const nameRaw = hashIdx >= 0 ? rest.slice(hashIdx + 1) : "";
+  const queryIdx = withoutHash.indexOf("?");
+  const main = queryIdx >= 0 ? withoutHash.slice(0, queryIdx) : withoutHash;
+  const params = new URLSearchParams(queryIdx >= 0 ? withoutHash.slice(queryIdx + 1) : "");
 
-  let decoded = encoded;
-  try { decoded = atob(decoded.replace(/@.*/, "")); } catch { /* keep as-is */ }
+  let method = "";
+  let password = "";
+  let server = "";
+  let port = 8388;
 
-  const atIdx = decoded.lastIndexOf("@");
-  const userinfo = atIdx >= 0 ? decoded.slice(0, atIdx) : "";
-  const [method = "aes-256-gcm", ...passwordParts] = userinfo.split(":");
-  const password = passwordParts.join(":");
+  const atIdx = main.lastIndexOf("@");
+  if (atIdx >= 0) {
+    const userPart = main.slice(0, atIdx);
+    const hostPart = main.slice(atIdx + 1);
+    const decodedUser = decodeBase64Flexible(userPart) || safeDecodeURIComponent(userPart);
+    [method, password] = splitOnce(decodedUser, ":");
+    ({ host: server, port } = parseHostPort(hostPart, 8388));
+  } else {
+    const decoded = decodeBase64Flexible(main) || safeDecodeURIComponent(main);
+    const decodedAtIdx = decoded.lastIndexOf("@");
+    if (decodedAtIdx >= 0) {
+      const userPart = decoded.slice(0, decodedAtIdx);
+      const hostPart = decoded.slice(decodedAtIdx + 1);
+      [method, password] = splitOnce(userPart, ":");
+      ({ host: server, port } = parseHostPort(hostPart, 8388));
+    }
+  }
 
-  const hostPart = atIdx >= 0 ? decoded.slice(atIdx + 1) : "";
-  const [server = "127.0.0.1", portStr = "8388"] = hostPart.split(":");
-  const port = Number(portStr) || 8388;
+  if (!method || !server || !password) return null;
 
-  let name = decodeURIComponent(nameRaw);
-  if (!name && atIdx < 0) name = `${method}:${server}:${port}`;
+  const proxy: ClashProxy = {
+    name: safeDecodeURIComponent(nameRaw) || `${server}:${port}`,
+    type: "ss",
+    server,
+    port,
+    cipher: method,
+    password,
+  };
 
-  return { name, type: "ss", server, port, cipher: method, password };
+  const plugin = params.get("plugin");
+  if (plugin) proxy.plugin = plugin;
+
+  return proxy;
 }
 
 function parseVmess(url: string): ClashProxy | null {
   const raw = url.slice(8);
   let json: Record<string, unknown>;
   try {
-    json = JSON.parse(atob(raw));
+    const decoded = decodeBase64Flexible(raw);
+    if (!decoded) return null;
+    json = JSON.parse(decoded);
   } catch {
     return null;
   }
+
   const port = Number(json.port) || 443;
-  const name = String(json.ps || json.remarks || "");
+  const name = String(json.ps || json.remarks || `${json.add || ""}:${port}`);
   const proxy: ClashProxy = {
     name,
     type: "vmess",
@@ -126,13 +180,20 @@ function parseVmess(url: string): ClashProxy | null {
     cipher: String(json.scy || "auto"),
     udp: true,
   };
-  const net = String(json.net || "tcp");
-  if (net !== "tcp") {
-    proxy.network = net;
-    proxy["ws-opts"] = json.host || json.path ? { path: json.path ? String(json.path) : "/" } : undefined;
-    if (json.host) (proxy["ws-opts"] as Record<string, unknown>)!["headers"] = { Host: String(json.host) };
+
+  const net = String(json.net || "tcp").toLowerCase();
+  if (net !== "tcp") proxy.network = net;
+
+  if (net === "ws") {
+    const path = json.path ? String(json.path) : "/";
+    const host = json.host ? String(json.host) : "";
+    proxy["ws-opts"] = { path };
+    if (host) (proxy["ws-opts"] as Record<string, unknown>).headers = { Host: host };
+  } else if (net === "grpc") {
+    proxy["grpc-opts"] = { "grpc-service-name": json.path ? String(json.path) : "" };
   }
-  if (json.tls === "tls") proxy.tls = true;
+
+  if (json.tls === "tls" || json.tls === true) proxy.tls = true;
   if (json.sni) proxy.servername = String(json.sni);
   return proxy;
 }
@@ -140,7 +201,7 @@ function parseVmess(url: string): ClashProxy | null {
 function parseVless(url: string): ClashProxy {
   const u = parseUrl(url);
   const name = u.hash || `${u.host}:${u.port}`;
-  const proxy: ClashProxy = { name, type: "vless", server: u.host, port: u.port, uuid: u.userinfo, udp: true };
+  const proxy: ClashProxy = { name, type: "vless", server: u.host, port: u.port, uuid: u.username, udp: true };
 
   const flow = u.params.get("flow");
   if (flow) proxy.flow = flow;
@@ -165,6 +226,18 @@ function parseVless(url: string): ClashProxy {
   if (sni) proxy.servername = sni;
   const fp = u.params.get("fp");
   if (fp) proxy["client-fingerprint"] = fp;
+  if (u.params.get("allowInsecure") === "1" || u.params.get("insecure") === "1") proxy["skip-cert-verify"] = true;
+
+  if (security === "reality") {
+    const publicKey = u.params.get("pbk");
+    const shortId = u.params.get("sid");
+    if (publicKey || shortId) {
+      proxy["reality-opts"] = {
+        ...(publicKey ? { "public-key": publicKey } : {}),
+        ...(shortId ? { "short-id": shortId } : {}),
+      };
+    }
+  }
 
   return proxy;
 }
@@ -183,29 +256,31 @@ function parseTrojan(url: string): ClashProxy {
 
   const type = u.params.get("type") || "tcp";
   if (type !== "tcp") {
-    const sni = u.params.get("sni") || u.host;
     proxy.network = type;
-    proxy.sni = sni;
     if (type === "ws") {
       const path = u.params.get("path") || "/";
       const host = u.params.get("host") || "";
-      proxy["ws-opts"] = { path, headers: { Host: host } };
+      proxy["ws-opts"] = { path };
+      if (host) (proxy["ws-opts"] as Record<string, unknown>).headers = { Host: host };
+    }
+    if (type === "grpc") {
+      proxy["grpc-opts"] = { "grpc-service-name": u.params.get("serviceName") || "" };
     }
   }
 
   const security = u.params.get("security") || "none";
   if (security !== "none") proxy.tls = true;
-  const sni2 = u.params.get("sni");
-  if (sni2) proxy.sni = sni2;
+  const sni = u.params.get("sni");
+  if (sni) proxy.sni = sni;
   const fp = u.params.get("fp");
   if (fp) proxy["client-fingerprint"] = fp;
-  if (u.params.get("allowInsecure") === "1") proxy["skip-cert-verify"] = true;
+  if (u.params.get("allowInsecure") === "1" || u.params.get("insecure") === "1") proxy["skip-cert-verify"] = true;
 
   return proxy;
 }
 
 function parseHysteria2(url: string): ClashProxy {
-  const u = parseUrl(url);
+  const u = parseUrl(url.replace(/^hy2:\/\//i, "hysteria2://"));
   const name = u.hash || `${u.host}:${u.port}`;
   const proxy: ClashProxy = {
     name,
@@ -227,18 +302,20 @@ function parseHysteria2(url: string): ClashProxy {
 function parseTuic(url: string): ClashProxy {
   const u = parseUrl(url);
   const name = u.hash || `${u.host}:${u.port}`;
+  const password = u.password || u.params.get("password") || "";
+  const alpn = u.params.get("alpn");
   return {
     name,
     type: "tuic",
     server: u.host,
     port: u.port,
-    uuid: u.userinfo,
-    password: u.params.get("password") || "",
+    uuid: u.username,
+    password,
     udp: true,
-    "skip-cert-verify": u.params.get("allowInsecure") === "1",
+    "skip-cert-verify": u.params.get("allowInsecure") === "1" || u.params.get("insecure") === "1",
     sni: u.params.get("sni") || u.host,
     "congestion-controller": u.params.get("congestion_control") || "bbr",
-    "alpn": u.params.get("alpn") ? [u.params.get("alpn")!] : ["h3"],
+    alpn: alpn ? alpn.split(",").map((item) => item.trim()).filter(Boolean) : ["h3"],
   };
 }
 
@@ -252,7 +329,7 @@ function parseAnyTls(url: string): ClashProxy {
     port: u.port,
     password: u.userinfo,
     udp: true,
-    "skip-cert-verify": true,
+    "skip-cert-verify": u.params.get("allowInsecure") === "1" || u.params.get("insecure") === "1",
     sni: u.params.get("sni") || u.host,
     alpn: u.params.get("alpn") ? [u.params.get("alpn")!] : undefined,
   };
@@ -261,11 +338,72 @@ function parseAnyTls(url: string): ClashProxy {
 function parseHttp(url: string): ClashProxy {
   const u = parseUrl(url);
   const name = u.hash || `${u.host}:${u.port}`;
-  return { name, type: u.protocol, server: u.host, port: u.port, username: u.userinfo, tls: u.protocol === "https" };
+  return {
+    name,
+    type: "http",
+    server: u.host,
+    port: u.port,
+    username: u.username || undefined,
+    password: u.password || undefined,
+    tls: u.protocol === "https" || undefined,
+  };
 }
 
 function parseSocks5(url: string): ClashProxy {
   const u = parseUrl(url);
   const name = u.hash || `${u.host}:${u.port}`;
-  return { name, type: "socks5", server: u.host, port: u.port, username: u.userinfo };
+  return {
+    name,
+    type: "socks5",
+    server: u.host,
+    port: u.port,
+    username: u.username || undefined,
+    password: u.password || undefined,
+  };
+}
+
+function decodeBase64Flexible(value: string): string | null {
+  const normalized = value.trim().replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (!normalized) return null;
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function splitOnce(value: string, separator: string): [string, string] {
+  const idx = value.indexOf(separator);
+  if (idx < 0) return [value, ""];
+  return [value.slice(0, idx), value.slice(idx + separator.length)];
+}
+
+function parseHostPort(value: string, defaultPortValue: number): { host: string; port: number } {
+  const decoded = safeDecodeURIComponent(value);
+  if (decoded.startsWith("[")) {
+    const end = decoded.indexOf("]");
+    if (end >= 0) {
+      const host = decoded.slice(1, end);
+      const rest = decoded.slice(end + 1);
+      return { host, port: rest.startsWith(":") ? Number(rest.slice(1)) || defaultPortValue : defaultPortValue };
+    }
+  }
+
+  const idx = decoded.lastIndexOf(":");
+  if (idx > 0 && decoded.indexOf(":") === idx) {
+    return { host: decoded.slice(0, idx), port: Number(decoded.slice(idx + 1)) || defaultPortValue };
+  }
+
+  return { host: decoded, port: defaultPortValue };
 }
