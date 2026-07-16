@@ -14,6 +14,20 @@ export function sortByName(proxies: ClashProxy[]): ClashProxy[] {
   return [...proxies].sort((a, b) => a.name.localeCompare(b.name, "zh"));
 }
 
+export function ensureUniqueProxyNames(proxies: ClashProxy[]): ClashProxy[] {
+  const counts = new Map<string, number>();
+  return proxies.map((proxy) => {
+    const count = counts.get(proxy.name) ?? 0;
+    counts.set(proxy.name, count + 1);
+    if (count === 0) return proxy;
+
+    return {
+      ...proxy,
+      name: `${proxy.name} #${count + 1}`,
+    };
+  });
+}
+
 export function excludeByName(proxies: ClashProxy[], pattern: RegExp): ClashProxy[] {
   return proxies.filter((p) => !pattern.test(p.name));
 }

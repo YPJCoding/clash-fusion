@@ -8,6 +8,12 @@ export interface ClashProxy {
   [key: string]: unknown;
 }
 
+export interface ParsedSubscription {
+  proxies: ClashProxy[];
+  dns?: Record<string, unknown>;
+  hosts?: Record<string, unknown>;
+}
+
 interface ParsedUrl {
   protocol: string;
   username: string;
@@ -19,23 +25,30 @@ interface ParsedUrl {
   hash: string;
 }
 
-export function parseSubscriptionContent(raw: string): ClashProxy[] {
+export function parseSubscriptionConfig(raw: string): ParsedSubscription {
   const text = raw.trim();
-  if (!text) return [];
+  if (!text) return { proxies: [] };
 
   // Try base64 decode (common for subscription content in URI format)
   let decoded = text;
   const base64Decoded = decodeBase64Flexible(text);
-  if (base64Decoded && /^(ss|vmess|vless|trojan|hysteria2?|hy2|tuic|anytls|wireguard|socks5|http)/im.test(base64Decoded.trim())) {
+  if (
+    base64Decoded
+    && /^(ss|vmess|vless|trojan|hysteria2?|hy2|tuic|anytls|wireguard|socks5|http|\s*(mixed-port:|allow-lan:|mode:|proxies:)|\s*[\[{])/im.test(base64Decoded.trim())
+  ) {
     decoded = base64Decoded;
   }
 
   // Clash YAML format (starts with mixed-port or has proxies: section)
   if (/^\s*(mixed-port:|allow-lan:|mode:|proxies:)/m.test(decoded)) {
     try {
-      const parsed = parseYaml(decoded) as { proxies?: ClashProxy[] };
+      const parsed = parseYaml(decoded) as Record<string, unknown>;
       if (Array.isArray(parsed?.proxies)) {
-        return parsed.proxies.filter(isProxyLike);
+        return {
+          proxies: parsed.proxies.filter(isProxyLike),
+          ...pickRecord(parsed, "dns"),
+          ...pickRecord(parsed, "hosts"),
+        };
       }
     } catch { /* not YAML */ }
   }
@@ -45,21 +58,33 @@ export function parseSubscriptionContent(raw: string): ClashProxy[] {
     try {
       const parsed = JSON.parse(decoded);
       const proxies = Array.isArray(parsed) ? parsed : parsed.proxies || [];
-      return proxies.filter(isProxyLike);
+      return {
+        proxies: proxies.filter(isProxyLike),
+        ...(Array.isArray(parsed) ? {} : pickRecord(parsed, "dns")),
+        ...(Array.isArray(parsed) ? {} : pickRecord(parsed, "hosts")),
+      };
     } catch { /* not JSON */ }
   }
 
   // Parse line-by-line proxy URIs
-  return decoded
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#") && !line.startsWith(";"))
-    .map(parseProxyLine)
-    .filter((p): p is ClashProxy => p !== null);
+  return {
+    proxies: decoded
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && !line.startsWith(";"))
+      .map(parseProxyLine)
+      .filter((p): p is ClashProxy => p !== null),
+  };
 }
 
 function isProxyLike(p: unknown): p is ClashProxy {
   return !!p && typeof p === "object" && "name" in p && "type" in p && "server" in p && "port" in p;
+}
+
+function pickRecord(source: Record<string, unknown>, key: "dns" | "hosts"): Partial<ParsedSubscription> {
+  const value = source[key];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return { [key]: value as Record<string, unknown> };
 }
 
 function parseProxyLine(line: string): ClashProxy | null {
