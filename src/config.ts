@@ -21,10 +21,9 @@ export const TEMPLATE: Record<string, unknown> = {
     ],
   },
   "proxy-groups": [
-    { name: "🚀 节点选择", type: "select", proxies: ["♻️ 自动选择", "DIRECT"] },
-    { name: "♻️ 自动选择", type: "url-test", proxies: ["$all"], url: "https://www.gstatic.com/generate_204", interval: 300 },
-    { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "DIRECT"] },
-    { name: "🐧 Linux.do", type: "select", proxies: ["🚀 节点选择", "♻️ 自动选择", "DIRECT"] },
+    { name: "🚀 节点选择", type: "select", proxies: ["$all", "DIRECT"] },
+    { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
+    { name: "🐧 Linux.do", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
     { name: "🎯 全球直连", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
   ],
   "rule-providers": {
