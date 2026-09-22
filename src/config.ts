@@ -6,8 +6,8 @@ export const TEMPLATE: Record<string, unknown> = {
     "default-nameserver": ["119.29.29.29", "223.5.5.5"],
     "nameserver-policy": {
       "geosite:cn,private,apple": ["https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"],
-      "*.linux.do": "https://xxx.ddd.oaifree.com/query-dns",
-      "linux.do": "https://xxx.ddd.oaifree.com/query-dns",
+      "*.linux.do": "https://xxx.ddd.oaifree.com/query-dns#DIRECT",
+      "linux.do": "https://xxx.ddd.oaifree.com/query-dns#DIRECT",
     },
     nameserver: ["https://1.1.1.1/dns-query#RULES", "https://8.8.8.8/dns-query#RULES"],
     "proxy-server-nameserver": ["119.29.29.29", "223.5.5.5"],
@@ -15,6 +15,7 @@ export const TEMPLATE: Record<string, unknown> = {
     "direct-nameserver-follow-policy": true,
     "fake-ip-range": "198.18.0.0/16",
     "fake-ip-filter": [
+      "linux.do", "*.linux.do",
       "*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com",
       "+.market.xiaomi.com", "localhost.ptlogin2.qq.com",
       "*.msftncsi.com", "www.msftconnecttest.com",
@@ -23,7 +24,6 @@ export const TEMPLATE: Record<string, unknown> = {
   "proxy-groups": [
     { name: "🚀 节点选择", type: "select", proxies: ["$all", "DIRECT"] },
     { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
-    { name: "🐧 Linux.do", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
     { name: "🎯 全球直连", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
   ],
   "rule-providers": {
@@ -57,7 +57,7 @@ export const TEMPLATE: Record<string, unknown> = {
     "GEOIP,private,DIRECT,no-resolve",
     "RULE-SET,Telegram,📲 电报消息",
     "RULE-SET,Apple,🎯 全球直连",
-    "DOMAIN-SUFFIX,linux.do,🐧 Linux.do",
+    "DOMAIN-SUFFIX,linux.do,DIRECT",
     "GEOSITE,CN,🎯 全球直连",
     "RULE-SET,AllProxy,🚀 节点选择",
     "GEOIP,CN,🎯 全球直连",
