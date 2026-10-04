@@ -14,8 +14,30 @@ const YAML_STRINGIFY_OPTIONS = {
   lineWidth: 0,
 };
 
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, HEAD, OPTIONS",
+  "access-control-allow-headers": "Authorization, Content-Type",
+  "access-control-expose-headers": "profile-update-interval",
+  "access-control-max-age": "86400",
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Browser preflights do not carry the actual request's auth token.
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const response = await handleRequest(request, env);
+    for (const [name, value] of Object.entries(CORS_HEADERS)) {
+      response.headers.set(name, value);
+    }
+    return response;
+  },
+};
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/config.yaml" || url.pathname === "/") {
@@ -110,8 +132,7 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
-  },
-};
+}
 
 async function fetchSubscription(subUrl: string): Promise<ClashProxy[]> {
   const resp = await fetch(subUrl, {

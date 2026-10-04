@@ -106,6 +106,25 @@ The special token `$all` in a proxy group's `proxies` array expands to every dis
 | `content-type` | `text/yaml; charset=utf-8` |
 | `profile-update-interval` | `6` (hours) |
 | `cache-control` | `no-store` |
+| `access-control-allow-origin` | `*` |
+| `access-control-allow-methods` | `GET, HEAD, OPTIONS` |
+| `access-control-allow-headers` | `Authorization, Content-Type` |
+| `access-control-expose-headers` | `profile-update-interval` |
+| `access-control-max-age` | `86400` (seconds) |
+
+### Browser Cross-Origin Requests
+
+The Worker handles `OPTIONS` preflights without authentication and includes CORS headers on both successful and error responses. Actual config requests still require `AUTH_TOKEN` when configured.
+
+```js
+const response = await fetch("https://your-domain.com/config.yaml", {
+  headers: { Authorization: "Bearer YOUR_TOKEN" },
+});
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+const config = await response.text();
+```
+
+All origins are allowed; cookie-based requests (`credentials: "include"`) are not supported. Only give your token to websites you trust. Cloudflare Access/WAF errors generated before the Worker runs need separate configuration.
 
 ## Supported Proxy Formats
 
