@@ -97,6 +97,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         const nodeNames = processed.map((p) => p.name);
         const proxyGroups = expandProxyGroups(nodeNames);
 
+        const staticProxies = (TEMPLATE.proxies as Array<Record<string, unknown>>) || [];
         const cleanProxies = processed.map(({ name, type, server, port, ...rest }) => {
           const obj: Record<string, unknown> = { name, type, server, port };
           for (const [k, v] of Object.entries(rest)) {
@@ -111,7 +112,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           mode: TEMPLATE.mode ?? "rule",
           "log-level": TEMPLATE["log-level"] ?? "info",
           ...(TEMPLATE.dns ? { dns: TEMPLATE.dns } : {}),
-          proxies: cleanProxies,
+          proxies: [...staticProxies, ...cleanProxies],
           "proxy-groups": proxyGroups,
           ...(TEMPLATE["rule-providers"] ? { "rule-providers": TEMPLATE["rule-providers"] } : {}),
           rules: (TEMPLATE.rules as string[])?.length ? TEMPLATE.rules : ["MATCH,🚀 节点选择"],
