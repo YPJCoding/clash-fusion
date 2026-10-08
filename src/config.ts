@@ -62,7 +62,6 @@ export const TEMPLATE: Record<string, unknown> = {
   },
   rules: [
     "IP-CIDR,10.239.36.1/32,🏢 aTrust,no-resolve",
-    "DOMAIN-SUFFIX,sinosure.com.cn,🏢 aTrust",
     "GEOSITE,private,DIRECT",
     "GEOIP,private,DIRECT,no-resolve",
     "RULE-SET,Telegram,📲 电报消息",
