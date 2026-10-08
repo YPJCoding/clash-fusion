@@ -20,7 +20,7 @@ export const TEMPLATE: Record<string, unknown> = {
   },
   proxies: [
     {
-      name: "aTrust-Docker",
+      name: "🏢 aTrust-Docker",
       type: "socks5",
       server: "127.0.0.1",
       port: 1080,
@@ -32,7 +32,7 @@ export const TEMPLATE: Record<string, unknown> = {
     { name: "🚀 节点选择", type: "select", proxies: ["$all", "DIRECT"] },
     { name: "📲 电报消息", type: "select", proxies: ["🚀 节点选择", "DIRECT"] },
     { name: "🎯 全球直连", type: "select", proxies: ["DIRECT", "🚀 节点选择"] },
-    { name: "aTrust", type: "select", proxies: ["aTrust-Docker", "DIRECT"] },
+    { name: "🏢 aTrust", type: "select", proxies: ["🏢 aTrust-Docker", "DIRECT"] },
   ],
   "rule-providers": {
     Telegram: {
@@ -61,8 +61,8 @@ export const TEMPLATE: Record<string, unknown> = {
     },
   },
   rules: [
-    "IP-CIDR,10.239.36.1/32,aTrust,no-resolve",
-    "DOMAIN-SUFFIX,sinosure.com.cn,aTrust",
+    "IP-CIDR,10.239.36.1/32,🏢 aTrust,no-resolve",
+    "DOMAIN-SUFFIX,sinosure.com.cn,🏢 aTrust",
     "GEOSITE,private,DIRECT",
     "GEOIP,private,DIRECT,no-resolve",
     "RULE-SET,Telegram,📲 电报消息",
