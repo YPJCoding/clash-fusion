@@ -16,6 +16,8 @@ export const TEMPLATE: Record<string, unknown> = {
       "*.lan", "*.local", "*.arpa", "time.*.com", "ntp.*.com",
       "+.market.xiaomi.com", "localhost.ptlogin2.qq.com",
       "*.msftncsi.com", "www.msftconnecttest.com",
+      // aTrust 容器必须拿到真实 IP：网关是 fake-ip 时 xtunnel 无法选线；localhost.sangfor.com.cn 应解析到 127.0.0.1
+      "+.sinosure.com.cn", "localhost.sangfor.com.cn",
     ],
   },
   proxies: [
