@@ -61,6 +61,8 @@ export const TEMPLATE: Record<string, unknown> = {
     },
   },
   rules: [
+    // 防回环：aTrust 容器（经 OrbStack 发出）访问内网时不能再送回 aTrust 自身
+    "AND,((PROCESS-NAME,OrbStack Helper),(IP-CIDR,10.239.36.1/32,no-resolve)),DIRECT",
     "IP-CIDR,10.239.36.1/32,🏢 aTrust,no-resolve",
     "GEOSITE,private,DIRECT",
     "GEOIP,private,DIRECT,no-resolve",
